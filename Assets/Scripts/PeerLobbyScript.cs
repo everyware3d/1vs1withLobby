@@ -1,22 +1,33 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using P2PPlugin.Network;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
+[DisallowMultipleComponent]
 public class PeerLobbyScript : MonoBehaviour, P2PObject.PeerComputerUpdates
 {
-    public enum PeerLobbyStateEnum
-    {
-        CreationTime = 0,
-        //        PeerID
+    static public PeerLobbyScript Instance;
+    PeerLobbyScript() {
+        Instance = this;
     }
-
     public GameObject localPeerNameGO;
     public GameObject lobbyPeerObjectPrefab;
     public GameObject lobbyPeerParent;
 
+    public GameObject wantToPlayGO;
+    public GameObject wantToPlayTextGO;
+
+    public GameObject lobbyMessageGO;
+
     static LobbyPeer localLobbyPeerInstance = null;
-    static private Dictionary<long, GameObject> RemoteLobbyPeers = new Dictionary<long, GameObject>();
+    static bool isPlaying = false;
+    static private Dictionary<long, GameObject> RemoteLobbyPeersGO = new Dictionary<long, GameObject>();
+    static private Dictionary<long, LobbyPeer> RemoteLobbyPeers = new Dictionary<long, LobbyPeer>();
 
 
     // Callbacks from P2PObject.PeerComputerUpdates
@@ -26,42 +37,103 @@ public class PeerLobbyScript : MonoBehaviour, P2PObject.PeerComputerUpdates
     }
     public void updateLocalPeerName(string newName)
     {
-        
+
         TextMeshPro localPeerNameText = localPeerNameGO.GetComponent<TextMeshPro>();
         if (localPeerNameText != null)
         {
             localPeerNameText.text = newName;
         }
     }
-    public void updated(PeerComputerInfo peerInfo)
+    public string getPeerName(long peerID)
+    {
+        object peerObj;
+        if (P2PObject.allPeerComputerIDs.TryGetValue(peerID, out peerObj))
+        {
+            PeerComputerInfo peerInfo = peerObj as PeerComputerInfo;
+            return peerInfo.name;
+        }
+        return "";
+    }
+    public void updateRemotePeerName(long peerID, string name)
     {
         GameObject LobbyPeerGO;
-        if (peerInfo.isLocal){
-            updateLocalPeerName(peerInfo.name);
-        } else if (RemoteLobbyPeers.TryGetValue(peerInfo.computerID, out LobbyPeerGO))
+        if (RemoteLobbyPeersGO.TryGetValue(peerID, out LobbyPeerGO))
         {
-            PeerLobbyEntryComponents peerLobbyEntryComponents = LobbyPeerGO.GetComponent<PeerLobbyEntryComponents>();
-            if (peerLobbyEntryComponents != null)
+            PeerLobbyEntry peerLobbyEntry = LobbyPeerGO.GetComponent<PeerLobbyEntry>();
+            if (peerLobbyEntry != null)
             {
-                TextMeshProUGUI peerNameText = peerLobbyEntryComponents.PeerNameTextGO.GetComponent<TextMeshProUGUI>();
+                TextMeshProUGUI peerNameText = peerLobbyEntry.PeerNameTextGO.GetComponent<TextMeshProUGUI>();
                 if (peerNameText != null)
                 {
-                    peerNameText.text = peerInfo.name;
+                    peerNameText.text = name;
                 }
             }
         }
     }
-    
+    public void updateRemotePeerButtonText(long peerID, string name)
+    {
+        GameObject LobbyPeerGO;
+        if (RemoteLobbyPeersGO.TryGetValue(peerID, out LobbyPeerGO))
+        {
+            if (LobbyPeerGO.IsDestroyed())
+            {
+                Debug.Log("ERROR: updateRemotePeerButtonText: Object is already destroyed: peerID: " + peerID);
+                return;
+            }
+            PeerLobbyEntry peerLobbyEntry = LobbyPeerGO.GetComponent<PeerLobbyEntry>();
+            if (peerLobbyEntry != null)
+            {
+                TextMeshProUGUI peerButton = peerLobbyEntry.RequestOrJoinButtonTextGO.GetComponent<TextMeshProUGUI>();
+                if (peerButton != null)
+                {
+                    peerButton.text = name;
+                }
+            }
+        }
+    }
 
+    public void showHideRemotePeerButton(long peerID, bool show)
+    {
+        GameObject LobbyPeerGO;
+        if (RemoteLobbyPeersGO.TryGetValue(peerID, out LobbyPeerGO))
+        {
+            if (LobbyPeerGO.IsDestroyed())
+            {
+                Debug.Log("ERROR: showHideRemotePeerButton: Object is already destroyed: peerID: " + peerID);
+                return;
+            }
+            PeerLobbyEntry peerLobbyEntry = LobbyPeerGO.GetComponent<PeerLobbyEntry>();
+            if (peerLobbyEntry != null)
+            {
+                peerLobbyEntry.RequestOrJoinButtonGO.SetActive(show);
+            }
+        }
+    }
+    public void updated(PeerComputerInfo peerInfo)
+    {
+
+        if (peerInfo.isLocal)
+        {
+            updateLocalPeerName(peerInfo.name);
+        }
+        else
+        {
+            updateRemotePeerName(peerInfo.computerID, peerInfo.name);
+        }
+    }
+
+    private int addP2PChangeKey = 0;
     void Start()
     {
-        LobbyPeer.addP2PChangeListener((addOrRemove, p2pIns) =>
+        addP2PChangeKey = LobbyPeer.addP2PChangeListener((addOrRemove, p2pIns) =>
         {
             if (addOrRemove)
             {
                 GameObject lobbyPeerGO = Instantiate(lobbyPeerObjectPrefab);
                 lobbyPeerGO.name = "LobbyPeer_" + p2pIns.sourceComputerID;
-                RemoteLobbyPeers.Add(p2pIns.sourceComputerID, lobbyPeerGO);
+
+                RemoteLobbyPeersGO.Add(p2pIns.sourceComputerID, lobbyPeerGO);
+                RemoteLobbyPeers.Add(p2pIns.sourceComputerID, p2pIns);
                 lobbyPeerGO.transform.SetParent(lobbyPeerParent.transform);
                 RectTransform rt = lobbyPeerGO.GetComponent<RectTransform>();
                 rt.anchoredPosition = new Vector2(0, 0);
@@ -71,10 +143,11 @@ public class PeerLobbyScript : MonoBehaviour, P2PObject.PeerComputerUpdates
                 if (P2PObject.allPeerComputerIDs.TryGetValue(p2pIns.sourceComputerID, out peerObj))
                 {
                     PeerComputerInfo peerInfo = peerObj as PeerComputerInfo;
-                    PeerLobbyEntryComponents peerLobbyEntryComponents = lobbyPeerGO.GetComponent<PeerLobbyEntryComponents>();
-                    if (peerLobbyEntryComponents != null)
+                    PeerLobbyEntry peerLobbyEntry = lobbyPeerGO.GetComponent<PeerLobbyEntry>();
+                    if (peerLobbyEntry != null)
                     {
-                        TextMeshProUGUI peerNameText = peerLobbyEntryComponents.PeerNameTextGO.GetComponent<TextMeshProUGUI>();
+                        peerLobbyEntry.peerComputerID = p2pIns.sourceComputerID;
+                        TextMeshProUGUI peerNameText = peerLobbyEntry.PeerNameTextGO.GetComponent<TextMeshProUGUI>();
                         if (peerNameText != null)
                         {
                             peerNameText.text = peerInfo.name;
@@ -84,16 +157,32 @@ public class PeerLobbyScript : MonoBehaviour, P2PObject.PeerComputerUpdates
             }
             else
             {
-                if (RemoteLobbyPeers.ContainsKey(p2pIns.sourceComputerID))
-                {
-                    GameObject lobbyPeerGO = RemoteLobbyPeers[p2pIns.sourceComputerID];
-                    RemoteLobbyPeers.Remove(p2pIns.sourceComputerID);
-                    Destroy(lobbyPeerGO);
-                }
+                RemoveLobbyPeer(p2pIns.sourceComputerID);
             }
         });
     }
-
+    private void RemoveLobbyPeer(long peerID)
+    {
+        GameObject lobbyPeerObj;
+        if (RemoteLobbyPeersGO.TryGetValue(peerID, out lobbyPeerObj))
+        {
+            RemoteLobbyPeersGO.Remove(peerID);
+            RemoteLobbyPeers.Remove(peerID);
+            Destroy(lobbyPeerObj);
+        }
+    }
+    private void RemoveAllLobbyPeers()
+    {
+        if (addP2PChangeKey != 0)
+        {
+            LobbyPeer.removeP2PChangeListener(addP2PChangeKey);
+            addP2PChangeKey = 0;
+        }
+        foreach (long peerID in RemoteLobbyPeersGO.Keys.ToArray<long>())
+        {
+            RemoveLobbyPeer(peerID);
+        }
+    }
     // Update is called once per frame
     void Update()
     {
@@ -103,20 +192,162 @@ public class PeerLobbyScript : MonoBehaviour, P2PObject.PeerComputerUpdates
             {
                 P2PObject.addPeerChangeListener(this);
                 localLobbyPeerInstance = new LobbyPeer();
-
-                object peerObj;
-                if (P2PObject.allPeerComputerIDs.TryGetValue(P2PObject.peerComputerID, out peerObj))
-                {
-                    PeerComputerInfo peerInfo = peerObj as PeerComputerInfo;
-                    updateLocalPeerName(peerInfo.name);
-                }
-                Debug.Log("Created LobbyPeer instance for this computer with Peer ID: " + localLobbyPeerInstance.sourceComputerID + " and Creation Time: " + localLobbyPeerInstance.timeCreated + " isLocal: " + localLobbyPeerInstance.getIsLocal()); 
+                updateLocalPeerName(getPeerName(P2PObject.peerComputerID));
+                // Debug.Log("Created LobbyPeer instance for this computer with Peer ID: " + localLobbyPeerInstance.sourceComputerID + " and Creation Time: " + localLobbyPeerInstance.timeCreated + " isLocal: " + localLobbyPeerInstance.getIsLocal());
             }
-            if (!localLobbyPeerInstance.getInserted())
+            if (!localLobbyPeerInstance.getInserted() && !isPlaying)
             {
                 localLobbyPeerInstance.Insert();
-                Debug.Log("Inserted Local LobbyPeer for this computer with Peer ID: " + localLobbyPeerInstance.sourceComputerID + " and Creation Time: " + localLobbyPeerInstance.timeCreated + " isLocal: " + localLobbyPeerInstance.getIsLocal());
+                // Debug.Log("Inserted Local LobbyPeer for this computer with Peer ID: " + localLobbyPeerInstance.sourceComputerID + " and Creation Time: " + localLobbyPeerInstance.timeCreated + " isLocal: " + localLobbyPeerInstance.getIsLocal());
             }
-        }        
+        }
+    }
+    IEnumerator CallLater(float delay, Action action)
+    {
+        yield return new WaitForSeconds(delay);
+        action?.Invoke();
+    }
+    public void TurnOffLobbyMessage()
+    {
+        StartCoroutine(CallLater(5.0f, () =>
+        {
+            lobbyMessageGO.SetActive(false);
+            Debug.Log("Called after 5 seconds on main thread!");
+        }));
+    }
+    public void TurnOffLobbyMessageAndPlay()
+    {
+        StartCoroutine(CallLater(5.0f, () =>
+        {
+            isPlaying = true;
+            localLobbyPeerInstance.Delete();
+            lobbyMessageGO.SetActive(false);
+            RemoveAllLobbyPeers();
+            SceneManager.LoadScene("Play");
+        }));
+    }
+
+    public void CancelRequestToPeerToPlay(long fromPeerID)
+    {
+        lobbyMessageGO.GetComponent<TextMeshProUGUI>().text = "Your request to " + getPeerName(fromPeerID) + " was declined.";
+        lobbyMessageGO.SetActive(true);
+        TurnOffLobbyMessage();
+
+        UpdateRemotePeerButtons();
+    }
+    public void TurnOffAllLobbyButtons()
+    {
+        foreach (long peerID in RemoteLobbyPeersGO.Keys)
+        {
+            showHideRemotePeerButton(peerID, false);
+        }
+    }
+    public void AcceptedRequestToPeerToPlay(long fromPeerID)
+    {
+        lobbyMessageGO.GetComponent<TextMeshProUGUI>().text = "Your request to " + getPeerName(fromPeerID) + " was accepted, get ready to play!";
+        lobbyMessageGO.SetActive(true);
+        TurnOffLobbyMessageAndPlay();
+
+        TurnOffAllLobbyButtons();
+    }
+    public void CancelRequestFromPeerToPlay()
+    {
+        requestingFromPeerID = 0;
+        UpdateRemotePeerButtons();
+        wantToPlayGO.SetActive(false);
+    }
+    public void RequestFromPeerToPlay(long peerComputerID)
+    {
+        requestingFromPeerID = peerComputerID;
+        UpdateRemotePeerButtons();
+        wantToPlayTextGO.GetComponent<TextMeshProUGUI>().text = getPeerName(peerComputerID) + " is requesting, do you want to play?";
+        wantToPlayGO.SetActive(true);
+    }
+
+    public void RequestToPlayWithPeer(long peerComputerID)
+    {
+
+        if (localLobbyPeerInstance.RequestedToPeer == peerComputerID)
+        {
+            // unrequest
+            localLobbyPeerInstance.RequestedToPeer = 0;
+        }
+        else
+        {
+            localLobbyPeerInstance.RequestedToPeer = peerComputerID;
+        }
+        UpdateRemotePeerButtons();
+    }
+
+    long requestingFromPeerID = 0;
+    public void LocalPeerAcceptedRequest()
+    {
+        wantToPlayGO.SetActive(false);
+        lobbyMessageGO.GetComponent<TextMeshProUGUI>().text = "Your accepted the request to play with " + getPeerName(requestingFromPeerID) + ", get ready to play!";
+        lobbyMessageGO.SetActive(true);
+        TurnOffLobbyMessageAndPlay();
+        foreach (long peerID in RemoteLobbyPeersGO.Keys)
+        {
+            showHideRemotePeerButton(peerID, false);
+        }
+        LobbyPeer lobbyPeer;
+        if (RemoteLobbyPeers.TryGetValue(requestingFromPeerID, out lobbyPeer))
+        {
+            lobbyPeer.AcceptedRequestInvoke(P2PObject.peerComputerID);
+        }
+        requestingFromPeerID = 0;
+    }
+    public void LocalPeerDeclinedRequest()
+    {
+        wantToPlayGO.SetActive(false);
+        LobbyPeer lobbyPeer;
+        if (RemoteLobbyPeers.TryGetValue(requestingFromPeerID, out lobbyPeer))
+        {
+            lobbyPeer.DeclineRequestInvoke(P2PObject.peerComputerID);
+        }
+        requestingFromPeerID = 0;
+        UpdateRemotePeerButtons();
+    }
+    public void UpdateRemotePeerButtons()
+    {
+        if (requestingFromPeerID != 0){
+            // if a peer is requesting, then turn all buttons off
+            foreach (long peerID in RemoteLobbyPeersGO.Keys){
+                showHideRemotePeerButton(peerID, false);
+            }
+        } else if (localLobbyPeerInstance.RequestedToPeer != 0){
+            // if this peer is requesting to play, then turn all off except the requested and set text to "Requested"
+            foreach (long peerID in RemoteLobbyPeersGO.Keys){
+                bool requesting = peerID == localLobbyPeerInstance.RequestedToPeer;
+                if (requesting){
+                    // set text to "Requested"
+                    updateRemotePeerButtonText(peerID, "Requested");
+                    showHideRemotePeerButton(peerID, true);
+                } else {
+                    showHideRemotePeerButton(peerID, false);
+                }
+            }
+        } else
+        {
+            // all remote peers that aren't being requested or requesting should be shown
+            HashSet<long> peersThatCantBeRequested = new HashSet<long>();
+            foreach (LobbyPeer lobbyPeer in RemoteLobbyPeers.Values)
+            {
+                if (lobbyPeer.RequestedToPeer != 0)
+                {
+                    peersThatCantBeRequested.Add(lobbyPeer.RequestedToPeer);
+                    peersThatCantBeRequested.Add(lobbyPeer.sourceComputerID);
+                }
+            }
+            foreach (long peerID in RemoteLobbyPeersGO.Keys){
+                if (peersThatCantBeRequested.Contains(peerID)) {
+                    // set text to "Requested"
+                    showHideRemotePeerButton(peerID, false);
+                } else {
+                    updateRemotePeerButtonText(peerID, "Request");
+                    showHideRemotePeerButton(peerID, true);
+                }
+            }
+        }
     }
 }
