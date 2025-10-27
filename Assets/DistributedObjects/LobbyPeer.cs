@@ -6,7 +6,8 @@ using UnityEngine;
 
 public class LobbyPeer : P2PNetworkObject
 {
-
+    static public Dictionary<long, LobbyPeer> RemoteLobbyPeers = new Dictionary<long, LobbyPeer>();
+ 
     public LobbyPeer()
     {
     }
@@ -28,7 +29,10 @@ public class LobbyPeer : P2PNetworkObject
             _requestedToPeer = value;
             if (getIsLocal())
             {
-                UpdateAllFields();
+                if (getInserted())
+                {
+                    UpdateAllFields();
+                }
             } else
             {
                 if (value == 0)
@@ -76,11 +80,12 @@ public class LobbyPeer : P2PNetworkObject
 
     public void AfterInsertRemote()
     {
-
+        RemoteLobbyPeers.Add(this.sourceComputerID, this);
         fireLobbyPeerChanged(true, this);
     }
     public void AfterDeleteRemote()
     {
+        RemoteLobbyPeers.Remove(this.sourceComputerID);
         fireLobbyPeerChanged(false, this);
     }
 
