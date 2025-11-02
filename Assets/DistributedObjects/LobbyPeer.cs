@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using P2PPlugin.Network;
-using Unity.VisualScripting;
-using UnityEngine;
 
 public class LobbyPeer : P2PNetworkObject
 {
