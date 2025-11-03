@@ -20,3 +20,38 @@ The key goals are:
 - **Basic Codebase**: Clean, modular example code in Unity (C#) that can be extended for use in any game.
 
 This example serves as a reference / starting point for peer-to-peer multiplayer games with basic networking and UI-flow.  It can certainly be extended to more than 2 players, and the game can easily be modified to start right away without the need of interaction in the Lobby.
+
+<center>
+
+<table style="border: none;width:100%; margin: auto;">
+<tr style="border: none;">
+<td style="border: none; width: 50%;">
+
+![Peer-to-Peer Lobby](images/P2PLobby.png "P2P Lobby with 4 peers")
+P2P Lobby with 4 peers
+</td>
+<td style="border: none; width: 50%">
+
+![Peer asks another Peer to play](images/P2PLobby_Ask_to_Play.png "P2P Lobby where peer asks another to play")
+P2P Lobby where peer asks another to play
+
+</td>
+</tr>
+
+<tr style="border: none;">
+<td style="border: none; width: 50%;">
+
+![P2P Lobby where peer has accepted a request to play](images/P2PLobby_Accepted.png "P2P Lobby where peer has accepted a request to play")
+P2P Lobby where peer has accepted a request to play
+
+</td>
+<td style="border: none; width: 50%;">
+
+![P2P where two peers are playing, other peers are still in Lobby](images/P2PGamePlay_1vs1.png "P2P where two peers are playing, other peers are still in Lobby")
+P2P where two peers are playing, other peers are still in Lobby
+
+</td>
+</tr>
+</table>
+
+</center>
